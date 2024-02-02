@@ -1,9 +1,10 @@
 // TODO: Controller for species model
-import {Request, Response, NextFunction} from 'express';
-import {PostMessage} from '../../types/MessageTypes';
-import {Species} from '../../types/DBTypes';
-import CustomError from '../../classes/CustomError';
-import SpeciesModel from '../models/speciesModel';
+import { Request, Response, NextFunction } from "express";
+import { PostMessage } from "../../types/MessageTypes";
+import { Species } from "../../types/DBTypes";
+import CustomError from "../../classes/CustomError";
+import SpeciesModel from "../models/speciesModel";
+import rectangleBounds from "../../lib/rectangleBounds";
 
 const speciesListGet = async (
   _req: Request,
@@ -18,15 +19,56 @@ const speciesListGet = async (
   }
 };
 
+const speciesGetByBoundingBox = async (
+  req: Request<{}, {}, {}, { topRight: string; bottomLeft: string }>,
+
+  res: Response<Species[]>,
+
+  next: NextFunction
+) => {
+  try {
+    const { topRight, bottomLeft } = req.query;
+
+    // query example: /species?topRight=40.73061,-73.935242&bottomLeft=40.71427,-74.00597
+
+    const rightCorner = {
+      lat: parseFloat(topRight.split(",")[0]),
+      lng: parseFloat(topRight.split(",")[1]),
+    };
+    const leftCorner = {
+      lat: parseFloat(bottomLeft.split(",")[0]),
+      lng: parseFloat(bottomLeft.split(",")[1]),
+    };
+
+    const bounds = rectangleBounds(rightCorner, leftCorner);
+
+    const species = await SpeciesModel.find({
+      location: {
+        $geoWithin: {
+          $box: bounds,
+        },
+      },
+    })
+
+      .select("-__v")
+
+      .populate("category", "-__v");
+
+    res.json(species);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const speciesGet = async (
-  req: Request<{id: string}>,
+  req: Request<{ id: string }>,
   res: Response<Species>,
   next: NextFunction
 ) => {
   try {
     const species = await SpeciesModel.findById(req.params.id);
     if (!species) {
-      throw new CustomError('Species not found', 404);
+      throw new CustomError("Species not found", 404);
     }
     res.json(species);
   } catch (error) {
@@ -35,49 +77,49 @@ const speciesGet = async (
 };
 
 const speciesPost = async (
-  req: Request<{}, {}, Omit<Species, '_id'>>,
+  req: Request<{}, {}, Omit<Species, "_id">>,
   res: Response<PostMessage>,
   next: NextFunction
 ) => {
   try {
     req.body.location = {
       ...req.body.location,
-      type: 'Point',
+      type: "Point",
     };
     const species = await SpeciesModel.create(req.body);
-    res.status(201).json({message: 'Species created', _id: species._id});
+    res.status(201).json({ message: "Species created", _id: species._id });
   } catch (error) {
     next(error);
   }
 };
 
 const speciesPut = async (
-  req: Request<{id: string}, {}, Omit<Species, '_id'>>,
+  req: Request<{ id: string }, {}, Omit<Species, "_id">>,
   res: Response<PostMessage>,
   next: NextFunction
 ) => {
   try {
     req.body.location = {
       ...req.body.location,
-      type: 'Point',
+      type: "Point",
     };
 
     const species = await SpeciesModel.findByIdAndUpdate(
       req.params.id,
       req.body,
-      {new: true}
+      { new: true }
     );
     if (!species) {
-      throw new CustomError('Species not found', 404);
+      throw new CustomError("Species not found", 404);
     }
-    res.json({message: 'Species updated', _id: species._id});
+    res.json({ message: "Species updated", _id: species._id });
   } catch (error) {
     next(error);
   }
 };
 
 const speciesDelete = async (
-  req: Request<{id: string}>,
+  req: Request<{ id: string }>,
   res: Response<PostMessage>,
   next: NextFunction
 ) => {
@@ -86,12 +128,19 @@ const speciesDelete = async (
       req.params.id
     )) as unknown as Species;
     if (!species) {
-      throw new CustomError('Species not found', 404);
+      throw new CustomError("Species not found", 404);
     }
-    res.json({message: 'Species deleted', _id: species._id});
+    res.json({ message: "Species deleted", _id: species._id });
   } catch (error) {
     next(error);
   }
 };
 
-export {speciesListGet, speciesGet, speciesPost, speciesPut, speciesDelete};
+export {
+  speciesListGet,
+  speciesGet,
+  speciesPost,
+  speciesPut,
+  speciesDelete,
+  speciesGetByBoundingBox,
+};
